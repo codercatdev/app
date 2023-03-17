@@ -7,7 +7,10 @@
   "private": true,
   "license": "MIT",
   "files": [
-    "build/**/*"
+    "build/**/*",
+    "components/**/*",
+    "lib/**/*",
+    "tailwind.config.js"
   ],
   "homepage": "https://insights.opensauced.pizza",
   "bugs": {
