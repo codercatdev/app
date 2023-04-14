@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 
@@ -15,7 +16,10 @@ import { useFetchUserHighlights } from "lib/hooks/useFetchUserHighlights";
 import Button from "components/atoms/Button/button";
 import useSupabaseAuth from "lib/hooks/useSupabaseAuth";
 import uppercaseFirst from "lib/utils/uppercase-first";
-import Link from "next/link";
+import useFetchAllEmojis from "lib/hooks/useFetchAllEmojis";
+
+import PaginationResults from "components/molecules/PaginationResults/pagination-result";
+import Pagination from "components/molecules/Pagination/pagination";
 
 interface ContributorProfileTabProps {
   contributor?: DbUser;
@@ -45,7 +49,9 @@ const ContributorProfileTab = ({
   const { login } = contributor || {};
   const { user } = useSupabaseAuth();
 
-  const { data: highlights, isError, isLoading, mutate } = useFetchUserHighlights(login || "");
+  const { data: highlights, isError, isLoading, mutate, meta, setPage } = useFetchUserHighlights(login || "");
+  const { data: emojis } = useFetchAllEmojis();
+
   const [inputVisible, setInputVisible] = useState(false);
   const pathnameRef = useRef<string | null>();
 
@@ -70,7 +76,7 @@ const ContributorProfileTab = ({
 
   return (
     <Tabs defaultValue={uppercaseFirst(currentPathname as string)} className="">
-      <TabsList className="w-full border-b  justify-start">
+      <TabsList className="justify-start w-full border-b">
         <TabsTrigger
           className="data-[state=active]:border-sauced-orange data-[state=active]:border-b-2 text-2xl"
           value="Highlights"
@@ -103,7 +109,7 @@ const ContributorProfileTab = ({
             <HighlightInputForm refreshCallback={mutate} />
           </div>
         )}
-        <div className="mt-8 flex flex-col gap-8">
+        <div className="flex flex-col gap-8 mt-8">
           {/* <HightlightEmptyState /> */}
 
           {isError && <>An error occured</>}
@@ -112,17 +118,46 @@ const ContributorProfileTab = ({
           ) : (
             <>
               {!isError && highlights && highlights.length > 0 ? (
-                // eslint-disable-next-line camelcase
-                highlights.map(({ id, title, highlight, url, created_at }) => (
-                  <div className="flex gap-2 flex-col lg:flex-row lg:gap-7" key={id}>
-                    <Link href={`/feed/${id}`}>
-                      <p className="text-light-slate-10 text-sm">{getFormattedDate(created_at)}</p>
-                    </Link>
-                    <ContributorHighlightCard id={id} user={login || ""} title={title} desc={highlight} prLink={url} />
-                  </div>
-                ))
+                <div>
+                  {/* eslint-disable-next-line camelcase */}
+                  {highlights.map(({ id, title, highlight, url, created_at }) => (
+                    <div className="flex flex-col gap-2 lg:flex-row lg:gap-7" key={id}>
+                      <Link href={`/feed/${id}`}>
+                        <p className="text-sm text-light-slate-10">{getFormattedDate(created_at)}</p>
+                      </Link>
+                      <ContributorHighlightCard
+                        emojis={emojis}
+                        id={id}
+                        user={login || ""}
+                        title={title}
+                        desc={highlight}
+                        prLink={url}
+                        refreshCallBack={mutate}
+                      />
+                    </div>
+                  ))}
+                  {meta.pageCount > 1 && (
+                    <div className="mt-10 max-w-[48rem] flex px-2 items-center justify-between">
+                      <div>
+                        <PaginationResults metaInfo={meta} total={meta.itemCount} entity={"highlights"} />
+                      </div>
+                      <Pagination
+                        pages={[]}
+                        totalPage={meta.pageCount}
+                        page={meta.page}
+                        pageSize={meta.itemCount}
+                        goToPage
+                        hasNextPage={meta.hasNextPage}
+                        hasPreviousPage={meta.hasPreviousPage}
+                        onPageChange={function (page: number): void {
+                          setPage(page);
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
               ) : (
-                <div className="flex justify-center rounded-xl border border-dashed border-light-slate-8 px-6 lg:px-32 py-20 items-center">
+                <div className="flex items-center justify-center px-6 py-20 border border-dashed rounded-xl border-light-slate-8 lg:px-32">
                   <div className="text-center">
                     {user?.user_metadata.user_name === login ? (
                       <>
@@ -153,22 +188,22 @@ const ContributorProfileTab = ({
 
       <TabsContent value="Contributions">
         <div className="mt-4">
-          <div className="bg-white mt-4 rounded-2xl border p-4 md:p-6">
-            <div className=" flex flex-col lg:flex-row gap-2 md:gap-12 lg:gap-16 justify-between">
+          <div className="p-4 mt-4 bg-white border rounded-2xl md:p-6">
+            <div className="flex flex-col justify-between gap-2 lg:flex-row md:gap-12 lg:gap-16">
               <div>
                 <span className="text-xs text-light-slate-11">PRs opened</span>
                 {openPrs ? (
-                  <div className="flex lg:justify-center md:pr-8 mt-1">
+                  <div className="flex mt-1 lg:justify-center md:pr-8">
                     <Text className="!text-lg md:!text-xl lg:!text-2xl !text-black !leading-none">{openPrs} PRs</Text>
                   </div>
                 ) : (
-                  <div className="flex justify-center items-end mt-1"> - </div>
+                  <div className="flex items-end justify-center mt-1"> - </div>
                 )}
               </div>
               <div>
                 <span className="text-xs text-light-slate-11">Avg PRs velocity</span>
                 {prVelocity ? (
-                  <div className="flex gap-2 lg:justify-center items-center">
+                  <div className="flex items-center gap-2 lg:justify-center">
                     <Text className="!text-lg md:!text-xl lg:!text-2xl !text-black !leading-none">
                       {getRelativeDays(prVelocity)}
                     </Text>
@@ -176,23 +211,23 @@ const ContributorProfileTab = ({
                     <Pill color="purple" text={`${prsMergedPercentage}%`} />
                   </div>
                 ) : (
-                  <div className="flex justify-center items-end mt-1"> - </div>
+                  <div className="flex items-end justify-center mt-1"> - </div>
                 )}
               </div>
               <div>
                 <span className="text-xs text-light-slate-11">Contributed Repos</span>
                 {recentContributionCount ? (
-                  <div className="flex lg:justify-center mt-1">
+                  <div className="flex mt-1 lg:justify-center">
                     <Text className="!text-lg md:!text-xl lg:!text-2xl !text-black !leading-none">
                       {`${recentContributionCount} Repo${recentContributionCount > 1 ? "s" : ""}`}
                     </Text>
                   </div>
                 ) : (
-                  <div className="flex justify-center items-end mt-1"> - </div>
+                  <div className="flex items-end justify-center mt-1"> - </div>
                 )}
               </div>
             </div>
-            <div className="mt-10 h-32">
+            <div className="h-32 mt-10">
               <CardLineChart lineChartOption={chart} className="!h-32" />
             </div>
             <div>
@@ -202,7 +237,7 @@ const ContributorProfileTab = ({
             <div className="mt-6">
               <PullRequestTable limit={15} contributor={githubName} topic={"*"} repositories={undefined} />
             </div>
-            <div className="mt-8 text-light-slate-9 text-sm">
+            <div className="mt-8 text-sm text-light-slate-9">
               <p>The data for these contributions is from publicly available open source projects on GitHub.</p>
             </div>
           </div>

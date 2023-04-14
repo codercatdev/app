@@ -1,5 +1,4 @@
-import React from "react";
-import { ComponentStory, ComponentMeta } from "@storybook/react";
+import { ComponentStory } from "@storybook/react";
 import CardHorizontalBarChart from "components/molecules/CardHorizontalBarChart/card-horizontal-bar-chart";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
 const storyConfig = {
@@ -20,8 +19,9 @@ export const testLanguageList = [
   },
   {
     languageName: "Rust",
-    percentageUsed: 30
-  }
+    percentageUsed: 15
+  },
+  { languageName: "React", percentageUsed: 15 }
 ];
 
 //CardHorizontalBarChart Template

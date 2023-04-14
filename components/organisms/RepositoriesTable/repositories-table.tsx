@@ -6,7 +6,7 @@ import RepoRow from "components/molecules/RepoRow/repo-row";
 import { getAvatarByUsername } from "lib/utils/github";
 import SkeletonWrapper from "components/atoms/SkeletonLoader/skeleton-wrapper";
 
-export interface ContributorsRows {
+interface ContributorsRows {
   name?: string;
   avatarURL?: string | StaticImageData;
   initials?: string;
@@ -15,21 +15,19 @@ export interface ContributorsRows {
 
 export interface RepositoriesRows {
   id: string;
-  name?: string;
-  owner?: string;
-  handle?: string;
+  full_name: string;
   activity?: string;
   owner_avatar?: string;
-  openPrsCount?: number;
-  mergedPrsCount?: number;
-  closedPrsCount?: number;
-  draftPrsCount?: number;
+  open_prs_count?: number;
+  merged_prs_count?: number;
+  closed_prs_count?: number;
+  draft_prs_count?: number;
   churnTotalCount?: number;
   churnDirection?: string;
   amount?: string;
   churn?: string;
-  spamPrsCount?: number;
-  prVelocityCount?: number;
+  spam_prs_count?: number;
+  pr_velocity_count?: number;
   prVelocity?: {
     amount?: string;
     churn?: string;
@@ -77,11 +75,10 @@ const RepositoriesTable = ({
 }: RepositoriesTableProps): JSX.Element => {
   const isLoadedWithRepos = !loading && !error && Array.isArray(listOfRepositories) && listOfRepositories.length > 0;
   const isFilteredRepoNotIndexed =
-    Array.isArray(repo) && !loading && !error && Array.isArray(listOfRepositories) && listOfRepositories.length === 0;
-  const [repoOwner, repoName] = repo && Array.isArray(repo) ? repo : [];
+  Array.isArray(repo) && !loading && !error && Array.isArray(listOfRepositories) && listOfRepositories.length === 0;
 
   return (
-    <section className="flex  flex-col">
+    <section className="flex flex-col">
       {loading && <SkeletonWrapper height={50} count={10} radius={4} classNames="px-6 mt-2" />}
       {error && <>An error has occured...</>}
 
@@ -89,7 +86,7 @@ const RepositoriesTable = ({
         listOfRepositories.map((item, index) => {
           const isSelected = selectedRepos.find(iteratedRepo => iteratedRepo.id == item.id) != undefined;
           return (
-            <RepoRow key={`${item.handle}/${item.name}/${index}`} topic={topic} repo={item} userPage={user} selected={isSelected} handleOnSelectRepo={handleOnSelectRepo} />
+            <RepoRow key={`${item.full_name}/${index}`} topic={topic} repo={item} userPage={user} selected={isSelected} handleOnSelectRepo={handleOnSelectRepo} />
           );
         })}
       {isFilteredRepoNotIndexed && (
@@ -98,11 +95,7 @@ const RepositoriesTable = ({
           // eslint-disable-next-line
           repo={{
             id: "",
-            owner: repoOwner,
-            handle: repoOwner,
-            name: repoName,
-            // eslint-disable-next-line camelcase
-            owner_avatar: getAvatarByUsername(repoOwner as string)
+            full_name: repo.join("/") as string
           }}
           userPage={user}
           handleOnSelectRepo={handleOnSelectRepo}

@@ -8,7 +8,7 @@ import Pagination from "components/molecules/Pagination/pagination";
 import PaginationResults from "components/molecules/PaginationResults/pagination-result";
 import TableHeader from "components/molecules/TableHeader/table-header";
 
-import { useRepositoriesList } from "lib/hooks/useRepositoriesList";
+import useRepositories from "lib/hooks/api/useRepositories";
 import useSupabaseAuth from "lib/hooks/useSupabaseAuth";
 
 import RepositoriesTable, { classNames, RepositoriesRows } from "../RepositoriesTable/repositories-table";
@@ -34,10 +34,9 @@ const Repositories = ({ repositories }: RepositoriesProps): JSX.Element => {
     meta: repoMeta,
     isError: repoListIsError,
     isLoading: repoListIsLoading,
-    page,
     setPage,
     setLimit
-  } = useRepositoriesList(false, repositories);
+  } = useRepositories(repositories);
   const filteredRepoNotIndexed = selectedFilter && !repoListIsLoading && !repoListIsError && repoListData.length === 0;
   const [selectedRepos, setSelectedRepos] = useState<DbRepo[]>([]);
 
@@ -88,12 +87,8 @@ const Repositories = ({ repositories }: RepositoriesProps): JSX.Element => {
       <TableHeader
         updateLimit={setLimit}
         onSearch={(e) => handleOnSearch(e)}
-        showing={{
-          from: page === 1 ? (repoMeta.itemCount > 0 ? page : 0) : (page - 1) * repoMeta.limit + 1,
-          to: page * repoMeta.limit <= repoMeta.itemCount ? page * repoMeta.limit : repoMeta.itemCount,
-          total: repoMeta.itemCount,
-          entity: "Repositories"
-        }}
+        metaInfo={repoMeta}
+        entity="repos"
         range={range}
         setRangeFilter={store.updateRange}
         title="Repositories"
@@ -182,12 +177,7 @@ const Repositories = ({ repositories }: RepositoriesProps): JSX.Element => {
             <div className="py-1 md:py-4 flex w-full md:mt-5 justify-between items-center">
               <div>
                 <div className="">
-                  <PaginationResults
-                    from={page === 1 ? (repoMeta.itemCount > 0 ? page : 0) : (page - 1) * repoMeta.limit + 1}
-                    to={page * repoMeta.limit <= repoMeta.itemCount ? page * repoMeta.limit : repoMeta.itemCount}
-                    total={repoMeta.itemCount}
-                    entity={"repos"}
-                  />
+                  <PaginationResults metaInfo={repoMeta} total={repoMeta.itemCount} entity={"repos"} />
                 </div>
               </div>
               <div>

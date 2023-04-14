@@ -18,6 +18,9 @@ import useStore from "lib/store";
 import Error from "components/atoms/Error/Error";
 import Search from "components/atoms/Search/search";
 import { useDebounce } from "rooks";
+import SuggestedRepositoriesList from "../SuggestedRepoList/suggested-repo-list";
+import { RepoCardProfileProps } from "components/molecules/RepoCardProfile/repo-card-profile";
+import { useToast } from "lib/hooks/useToast";
 
 enum RepoLookupError {
   Initial = 0,
@@ -34,11 +37,16 @@ interface InsightPageProps {
 
 const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
   const { sessionToken, providerToken } = useSupabaseAuth();
+  const { toast } = useToast();
   const router = useRouter();
   let receivedData = [];
   if (router.query.selectedRepos) {
     receivedData = JSON.parse(router.query.selectedRepos as string);
   }
+
+  // Loading States
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
 
   const [name, setName] = useState(insight?.name || "");
   const [isNameValid, setIsNameValid] = useState(false);
@@ -63,14 +71,18 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
   }, [pageRepos, insight?.is_public]);
 
   const reposRemoved = repoHistory.map((repo) => {
+    const [repoOwner, repoName] = repo.full_name.split("/");
     const totalPrs =
-      (repo.openPrsCount || 0) + (repo.closedPrsCount || 0) + (repo.mergedPrsCount || 0) + (repo.draftPrsCount || 0);
+      (repo.open_prs_count || 0) +
+      (repo.closed_prs_count || 0) +
+      (repo.merged_prs_count || 0) +
+      (repo.draft_prs_count || 0);
 
     return {
-      orgName: repo.owner,
-      repoName: repo.name,
+      orgName: repoOwner,
+      repoName: repoName,
       totalPrs,
-      avatar: getAvatarByUsername(repo.owner, 60),
+      avatar: getAvatarByUsername(repoOwner, 60),
       handleRemoveItem: () => {}
     };
   });
@@ -87,7 +99,7 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
   };
 
   const disableCreateButton = () => {
-    if (insight?.name && validateName(name)) return false;
+    if ((insight?.name && validateName(name)) || (repos.length && validateName(name))) return false;
     if (submitted) return true;
     if (!isNameValid) return true;
 
@@ -96,7 +108,7 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
 
   const handleCreateInsightPage = async () => {
     setSubmitted(true);
-
+    setCreateLoading(true);
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/user/insights`, {
       method: "POST",
       headers: {
@@ -105,14 +117,17 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
       },
       body: JSON.stringify({
         name,
-        repos: repos.map((repo) => ({ id: repo.host_id, fullName: repo.full_name })),
+        repos: repos.map((repo) => ({ id: repo.id, fullName: repo.full_name })),
         // eslint-disable-next-line
         is_public: isPublic
       })
     });
-
+    setCreateLoading(false);
     if (response.ok) {
-      router.push("/hub/insights");
+      toast({ description: "Page created successfully", variant: "success" });
+      setTimeout(() => {
+        router.push("/hub/insights");
+      }, 1000);
     }
 
     setSubmitted(false);
@@ -120,7 +135,7 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
 
   const handleUpdateInsightPage = async () => {
     setSubmitted(true);
-
+    setCreateLoading(true);
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/user/insights/${insight?.id}`, {
       method: "PATCH",
       headers: {
@@ -129,14 +144,17 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
       },
       body: JSON.stringify({
         name,
-        repos: repos.map((repo) => ({ id: repo.host_id, fullName: repo.full_name })),
+        repos: repos.map((repo) => ({ id: repo.id, fullName: repo.full_name })),
         // eslint-disable-next-line
         is_public: isPublic
       })
     });
-
-    if (response.ok) {
+    setCreateLoading(false);
+    if (response && response.ok) {
+      toast({ description: "Page updated successfully", variant: "success" });
       router.push("/hub/insights");
+    } else {
+      toast({ description: "An error occurred!", variant: "danger" });
     }
 
     setSubmitted(false);
@@ -145,14 +163,14 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
   const loadAndAddRepo = async (repoToAdd: string) => {
     setAddRepoError(RepoLookupError.Initial);
 
-    const hasRepo = repos.find((repo) => `${repo.owner}/${repo.name}` === repoToAdd);
+    const hasRepo = repos.find((repo) => `${repo.full_name}` === repoToAdd);
 
     if (hasRepo) {
       return;
     }
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_GS_API_URL}/repos/${repoToAdd}`);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/repos/${repoToAdd}`);
 
       if (response.ok) {
         const addedRepo = (await response.json()) as DbRepo;
@@ -166,7 +184,19 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
         const publicRepoResponse = await fetch(`https://api.github.com/repos/${repoToAdd}`);
 
         if (publicRepoResponse.ok) {
-          setAddRepoError(RepoLookupError.NotIndexed);
+          const publicRepo = await publicRepoResponse.json();
+
+          // create a stub repo to send to API
+          const addedRepo = {
+            id: publicRepo.id,
+            full_name: publicRepo.full_name
+          } as DbRepo;
+
+          setRepos((repos) => {
+            return [...repos, addedRepo];
+          });
+          setAddRepoError(RepoLookupError.Initial);
+          setRepoSearchTerm("");
         } else {
           setAddRepoError(RepoLookupError.Invalid);
         }
@@ -185,7 +215,7 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
       await loadAndAddRepo(repoAdded);
 
       setRepoHistory((historyRepos) => {
-        return historyRepos.filter((repo) => `${repo.owner}/${repo.name}` !== repoAdded);
+        return historyRepos.filter((repo) => `${repo.full_name}` !== repoAdded);
       });
     } catch (e) {}
   };
@@ -218,7 +248,7 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
 
   const handleDeleteInsightPage = async () => {
     setSubmitted(true);
-
+    setDeleteLoading(true);
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/insights/${insight?.id}`, {
       method: "DELETE",
       headers: {
@@ -227,7 +257,9 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
       }
     });
 
+    setDeleteLoading(false);
     if (response.ok) {
+      toast({ description: "Page deleted successfully!", variant: "success" });
       setIsModalOpen(false);
       router.push("/hub/insights");
     }
@@ -239,31 +271,65 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
     setIsModalOpen(false);
   };
 
-  const updateSuggestionsDebounced = useDebounce( async () => {
-    const req = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(`${repoSearchTerm} in:name in:repo:owner/name sort:updated`)}`, {
-      ...providerToken? {
-        headers: {
-          "Authorization": `Bearer ${providerToken}`
-        }} : {}
-    });
+  const updateSuggestionsDebounced = useDebounce(async () => {
+    setCreateLoading(true);
 
-    if(req.ok) {
+    const req = await fetch(
+      `https://api.github.com/search/repositories?q=${encodeURIComponent(
+        `${repoSearchTerm} in:name in:repo:owner/name sort:updated`
+      )}`,
+      {
+        ...(providerToken
+          ? {
+            headers: {
+              Authorization: `Bearer ${providerToken}`
+            }
+          }
+          : {})
+      }
+    );
+
+    setCreateLoading(false);
+    if (req.ok) {
       const res = await req.json();
       const suggestions = res.items.map((item: any) => item.full_name);
-      if(suggestions.length > 5) suggestions.length = 5;
+      if (suggestions.length > 5) suggestions.length = 5;
       setSuggestions(suggestions);
     }
   }, 250);
 
   useEffect(() => {
     setSuggestions([]);
-    if(!repoSearchTerm) return;
+    if (!repoSearchTerm) return;
     updateSuggestionsDebounced();
   }, [repoSearchTerm]);
 
+  const staticSuggestedRepos: RepoCardProfileProps[] = [
+    {
+      avatar: "https://avatars.githubusercontent.com/u/57568598?s=200&v=4",
+      prCount: 8,
+      repoName: "insights",
+      issueCount: 87,
+      orgName: "open-sauced"
+    },
+    {
+      avatar: "https://avatars.githubusercontent.com/u/59704711?s=200&v=4",
+      prCount: 26,
+      repoName: "cli",
+      issueCount: 398,
+      orgName: "cli"
+    },
+    {
+      avatar: "https://avatars.githubusercontent.com/u/42048915?s=200&v=4",
+      prCount: 100,
+      repoName: "deno",
+      issueCount: 1200,
+      orgName: "denoland"
+    }
+  ];
 
   return (
-    <section className="flex  flex-col lg:flex-row w-full lg:gap-20 py-4 lg:pl-28 justify-center ">
+    <section className="flex flex-col justify-center w-full py-4 lg:flex-row lg:gap-20 lg:pl-28 ">
       <div className="flex flex-col gap-8">
         <div className="pb-6 border-b border-light-slate-8">
           <Title className="!text-2xl !leading-none mb-4" level={1}>
@@ -284,26 +350,35 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
           {/* <Text>insights.opensauced.pizza/pages/{username}/{`{pageId}`}/dashboard</Text> */}
         </div>
 
-        <div className="py-6 border-b flex flex-col gap-4 border-light-slate-8">
+        <div className="flex flex-col gap-4 py-6 border-b border-light-slate-8">
           <Title className="!text-1xl !leading-none " level={4}>
             Add Repositories
           </Title>
-          <Search placeholder="Repository Full Name (ex: open-sauced/open-sauced)"
-            className="!w-full text-md text-gra" name={"query"}
-            suggestions={suggestions} onChange={(value) => setRepoSearchTerm(value)}
-            onSearch={(search)=> setRepoSearchTerm(search as string)}
+          <Search
+            isLoading={createLoading}
+            placeholder="Repository Full Name (ex: open-sauced/open-sauced)"
+            className="!w-full text-md text-gra"
+            name={"query"}
+            suggestions={suggestions}
+            onChange={(value) => setRepoSearchTerm(value)}
+            onSearch={(search) => setRepoSearchTerm(search as string)}
           />
 
           <div>
-            <Button disabled={repos.length === insightRepoLimit} onClick={handleAddRepository} variant="primary">
+            <Button disabled={repos.length === insightRepoLimit} onClick={handleAddRepository} variant="outline">
               Add Repository
             </Button>
           </div>
+
+          <SuggestedRepositoriesList
+            reposData={staticSuggestedRepos}
+            onAddRepo={(repo) => {
+              loadAndAddRepo(repo);
+            }}
+          />
         </div>
 
-        <div>
-          {getRepoLookupError(addRepoError)}
-        </div>
+        <div>{getRepoLookupError(addRepoError)}</div>
 
         <Title className="!text-1xl !leading-none mb-4 my-4" level={4}>
           Page Visibility
@@ -326,21 +401,23 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
         </div>
 
         {edit && (
-          <div className="py-6 border-b flex flex-col gap-4 border-t border-light-slate-8">
+          <div className="flex flex-col gap-4 py-6 border-t border-b border-light-slate-8">
             <Title className="!text-1xl !leading-none py-6" level={4}>
               Danger Zone
             </Title>
 
-            <div className="rounded-2xl flex flex-col bg-light-slate-4 p-6">
+            <div className="flex flex-col p-6 rounded-2xl bg-light-slate-4">
               <Title className="!text-1xl !leading-none !border-light-slate-8 border-b pb-4" level={4}>
                 Delete Page
               </Title>
-              <Text className="my-4">
-                Once you delete a page, you&#39;re past the point of no return.
-              </Text>
+              <Text className="my-4">Once you delete a page, you&#39;re past the point of no return.</Text>
 
               <div>
-                <Button onClick={()=> setIsModalOpen(true)} variant="default" className="bg-light-red-6 border border-light-red-8 hover:bg-light-red-7 text-light-red-10">
+                <Button
+                  onClick={() => setIsModalOpen(true)}
+                  variant="default"
+                  className="border bg-light-red-6 border-light-red-8 hover:bg-light-red-7 text-light-red-10"
+                >
                   Delete page
                 </Button>
               </div>
@@ -349,8 +426,9 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
         )}
       </div>
 
-      <div className="lg:sticky mt-5 md:mt-0 top-0 py-4 lg:py-0">
+      <div className="top-0 py-4 mt-5 lg:sticky md:mt-0 lg:py-0">
         <RepositoriesCart
+          loading={createLoading}
           edit={edit}
           hasItems={repos.length > 0}
           handleCreatePage={handleCreateInsightPage}
@@ -360,19 +438,20 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
           createPageButtonDisabled={disableCreateButton()}
         >
           {repos.map((repo) => {
+            const [repoOwner, repoName] = repo.full_name.split("/");
             const totalPrs =
-              (repo.openPrsCount || 0) +
-              (repo.closedPrsCount || 0) +
-              (repo.mergedPrsCount || 0) +
-              (repo.draftPrsCount || 0);
+              (repo.open_prs_count || 0) +
+              (repo.closed_prs_count || 0) +
+              (repo.merged_prs_count || 0) +
+              (repo.draft_prs_count || 0);
 
             return (
               <RepositoryCartItem
                 key={`repo_${repo.id}`}
-                avatar={getAvatarByUsername(repo.owner, 60)}
+                avatar={getAvatarByUsername(repoOwner, 60)}
                 handleRemoveItem={() => handleRemoveRepository(repo.id)}
-                orgName={repo.owner}
-                repoName={repo.name}
+                orgName={repoOwner}
+                repoName={repoName}
                 totalPrs={totalPrs}
               />
             );
@@ -381,7 +460,9 @@ const InsightPage = ({ edit, insight, pageRepos }: InsightPageProps) => {
       </div>
 
       <DeleteInsightPageModal
+        isLoading={deleteLoading}
         open={isModalOpen}
+        setOpen={setIsModalOpen}
         submitted={submitted}
         pageName={name}
         onConfirm={handleDeleteInsightPage}

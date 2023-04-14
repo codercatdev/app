@@ -8,13 +8,6 @@ import {
 } from "@heroicons/react/24/solid";
 import clsx from "clsx";
 
-import { useContributionsList } from "lib/hooks/useContributionsList";
-import { useRepositoryCommits } from "lib/hooks/useRepositoryCommits";
-import { getCommitsLast30Days } from "lib/utils/get-recent-commits";
-import { getRelativeDays } from "lib/utils/date-utils";
-import useSupabaseAuth from "lib/hooks/useSupabaseAuth";
-import getPercent from "lib/utils/get-percent";
-
 import { RepositoriesRows } from "components/organisms/RepositoriesTable/repositories-table";
 import Pill from "components/atoms/Pill/pill";
 import Sparkline from "components/atoms/Sparkline/sparkline";
@@ -23,6 +16,14 @@ import StackedAvatar from "../StackedAvatar/stacked-avatar";
 import PullRequestOverview from "../PullRequestOverview/pull-request-overview";
 import TableRepositoryName from "../TableRepositoryName/table-repository-name";
 import Checkbox from "components/atoms/Checkbox/checkbox";
+
+import { getRelativeDays } from "lib/utils/date-utils";
+import useSupabaseAuth from "lib/hooks/useSupabaseAuth";
+import getPercent from "lib/utils/get-percent";
+import { getAvatarByUsername } from "lib/utils/github";
+import useRepositoryPullRequests from "lib/hooks/api/useRepositoryPullRequests";
+import getPullRequestsToDays from "lib/utils/get-prs-to-days";
+import getPullRequestsContributors from "lib/utils/get-pr-contributors";
 
 interface RepoProps {
   repo: RepositoriesRows;
@@ -80,28 +81,25 @@ const getPrsSpam = (total: number, spam: number): number => {
 
 const RepoRow = ({ repo, topic, userPage, selected, handleOnSelectRepo }: RepoProps): JSX.Element => {
   const {
-    name,
-    owner: handle,
-    owner_avatar: ownerAvatar,
-    openPrsCount,
-    closedPrsCount,
-    draftPrsCount,
-    mergedPrsCount,
-    spamPrsCount,
-    churnTotalCount,
-    churnDirection,
-    prVelocityCount
+    full_name: fullName,
+    open_prs_count: openPrsCount,
+    closed_prs_count: closedPrsCount,
+    draft_prs_count: draftPrsCount,
+    merged_prs_count: mergedPrsCount,
+    spam_prs_count: spamPrsCount,
+    pr_velocity_count: prVelocityCount
   } = repo;
+  const ownerAvatar = getAvatarByUsername(fullName.split("/")[0]);
 
   const { user } = useSupabaseAuth();
-  const { data: contributorData, meta: contributorMeta } = useContributionsList(repo.id, "", "updated_at");
-  const { data: commitsData, meta: commitMeta, isLoading: commitLoading } = useRepositoryCommits(repo.id);
+  const { data: repositoryPullRequests } = useRepositoryPullRequests(repo.full_name, 100);
   const totalPrs = getTotalPrs(openPrsCount, mergedPrsCount, closedPrsCount, draftPrsCount);
   const prsMergedPercentage = getPercent(totalPrs, mergedPrsCount || 0);
   const spamPrsPercentage = getPrsSpam(totalPrs, spamPrsCount || 0);
   const prVelocityInDays = getRelativeDays(prVelocityCount || 0);
+  const contributorData = getPullRequestsContributors(repositoryPullRequests);
 
-  const days = getCommitsLast30Days(commitsData);
+  const days = getPullRequestsToDays(repositoryPullRequests);
   const last30days = [
     {
       id: `last30-${repo.id}`,
@@ -125,7 +123,7 @@ const RepoRow = ({ repo, topic, userPage, selected, handleOnSelectRepo }: RepoPr
         {/* Row: Repository Name and Pr overview */}
         <div className="flex items-center gap-x-3">
           <div className="w-[55%]">
-            <TableRepositoryName topic={topic} avatarURL={ownerAvatar} name={name} handle={handle} user={userPage} />
+            <TableRepositoryName topic={topic} avatarURL={ownerAvatar} fullName={fullName as string} user={userPage} />
           </div>
           <div className="w-[45%]">
             {repo.id ? (
@@ -134,8 +132,6 @@ const RepoRow = ({ repo, topic, userPage, selected, handleOnSelectRepo }: RepoPr
                 merged={mergedPrsCount}
                 closed={closedPrsCount}
                 draft={draftPrsCount}
-                churn={churnTotalCount}
-                churnDirection={`${churnDirection}`}
               />
             ) : (
               "-"
@@ -157,7 +153,7 @@ const RepoRow = ({ repo, topic, userPage, selected, handleOnSelectRepo }: RepoPr
           {/* Row: Activity */}
           <div className="flex items-center py-3 border-b justify-between">
             <div>Activity</div>
-            {getActivity(commitMeta.itemCount, commitLoading)}
+            {getActivity(totalPrs, false)}
           </div>
 
           {/* Row: Pr velocity */}
@@ -195,8 +191,8 @@ const RepoRow = ({ repo, topic, userPage, selected, handleOnSelectRepo }: RepoPr
           <div className="flex items-center py-3 justify-between">
             <div>Contributors</div>
             <div className="flex text-base items-center">
-              {contributorMeta.itemCount! > 0 ? <StackedAvatar contributors={contributorData} /> : "-"}
-              {contributorMeta.itemCount! >= 5 ? <div>&nbsp;{`+${contributorMeta.itemCount - 5}`}</div> : ""}
+              {contributorData.length! > 0 ? <StackedAvatar contributors={contributorData} /> : "-"}
+              {contributorData.length! >= 5 ? <div>&nbsp;{`+${contributorData.length - 5}`}</div> : ""}
             </div>
           </div>
 
@@ -221,14 +217,13 @@ const RepoRow = ({ repo, topic, userPage, selected, handleOnSelectRepo }: RepoPr
           <TableRepositoryName
             topic={topic}
             avatarURL={ownerAvatar}
-            name={name}
-            handle={handle}
+            fullName={fullName as string}
             user={userPage}
           ></TableRepositoryName>
         </div>
 
         {/* Column: Activity */}
-        <div className={classNames.cols.activity}>{getActivity(commitMeta.itemCount, commitLoading)}</div>
+        <div className={classNames.cols.activity}>{getActivity(totalPrs, false)}</div>
 
         {/* Column: PR Overview */}
         <div className={classNames.cols.prOverview}>
@@ -238,8 +233,6 @@ const RepoRow = ({ repo, topic, userPage, selected, handleOnSelectRepo }: RepoPr
               merged={mergedPrsCount}
               closed={closedPrsCount}
               draft={draftPrsCount}
-              churn={churnTotalCount}
-              churnDirection={`${churnDirection}`}
             ></PullRequestOverview>
           ) : (
             "-"
@@ -272,9 +265,9 @@ const RepoRow = ({ repo, topic, userPage, selected, handleOnSelectRepo }: RepoPr
 
         {/* Column: Contributors */}
         <div className={clsx(classNames.cols.contributors, "hidden lg:flex")}>
-          {contributorMeta.itemCount! > 0 ? <StackedAvatar contributors={contributorData} /> : "-"}
+          {contributorData.length! > 0 ? <StackedAvatar contributors={contributorData} /> : "-"}
 
-          {contributorMeta.itemCount! > 5 ? <div>&nbsp;{`+${contributorMeta.itemCount - 5}`}</div> : ""}
+          {contributorData.length! > 5 ? <div>&nbsp;{`+${contributorData.length - 5}`}</div> : ""}
         </div>
 
         {/* Column: Last 30 Days */}
