@@ -6,7 +6,9 @@
   "author": "Brian Douglas <brian@opensauced.pizza>",
   "private": true,
   "license": "Apache 2.0",
-  "files": ["build/**/*"],
+  "files": [
+    "build/**/*"
+  ],
   "homepage": "https://app.opensauced.pizza",
   "bugs": {
     "url": "https://github.com/open-sauced/insights/issues"
@@ -121,8 +123,8 @@
     "@storybook/addon-interactions": "^7.2.0",
     "@storybook/addon-links": "^7.2.0",
     "@storybook/addon-styling": "^1.3.5",
-    "@storybook/nextjs": "^7.2.0",
-    "@storybook/react": "^7.2.0",
+    "@storybook/nextjs": "^7.5.2",
+    "@storybook/react": "^7.5.2",
     "@storybook/testing-library": "^0.2.0",
     "@tailwindcss/typography": "^0.5.9",
     "@testing-library/jest-dom": "^5.16.5",
